@@ -2,8 +2,8 @@ package com.lanshifu.wxappmanager;
 
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -11,18 +11,27 @@ import android.widget.ImageView;
 
 import com.bumptech.glide.Glide;
 import com.lanshifu.baselibrary.base.BaseActivity;
+import com.lanshifu.baselibrary.log.LogHelper;
 import com.lanshifu.wxappmanager.bean.Picture;
+import com.tbruyelle.rxpermissions2.RxPermissions;
 import com.zhihu.matisse.Matisse;
 import com.zhihu.matisse.MimeType;
 import com.zhihu.matisse.engine.impl.GlideEngine;
 import com.zhihu.matisse.internal.entity.CaptureStrategy;
 
-import java.util.ArrayList;
+import java.io.File;
 import java.util.List;
 
 import butterknife.Bind;
-import butterknife.ButterKnife;
 import butterknife.OnClick;
+import cn.bmob.v3.datatype.BmobFile;
+import cn.bmob.v3.exception.BmobException;
+import cn.bmob.v3.listener.SaveListener;
+import cn.bmob.v3.listener.UploadFileListener;
+import io.reactivex.annotations.NonNull;
+import io.reactivex.functions.Consumer;
+import top.zibin.luban.Luban;
+import top.zibin.luban.OnCompressListener;
 
 public class AddPictureActivity extends BaseActivity {
 
@@ -46,6 +55,17 @@ public class AddPictureActivity extends BaseActivity {
     @Override
     protected void initView() {
         setTitleText("上传照片");
+        new RxPermissions(this)
+                .request(
+                        android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                        android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+                )
+                .subscribe(new Consumer<Boolean>() {
+                    @Override
+                    public void accept(@NonNull Boolean aBoolean) throws Exception {
+
+                    }
+                });
 
     }
 
@@ -74,9 +94,67 @@ public class AddPictureActivity extends BaseActivity {
             return;
         }
 
-        Picture picture = new Picture()
+        compressPicture();
 
 
+    }
+
+    private void compressPicture() {
+        Luban.with(mContext)
+                .load(mSelectedPic)
+                .setCompressListener(new OnCompressListener() {
+                    @Override
+                    public void onStart() {
+                    }
+
+                    @Override
+                    public void onSuccess(File file) {
+                        showShortToast("压缩成功");
+                        uploadPicture(file);
+                    }
+
+                    @Override
+                    public void onError(Throwable e) {
+                        showShortToast("图片压缩失败");
+                    LogHelper.e("lxb ->"+e.getMessage());
+                    }
+                }).launch();
+    }
+
+
+    private void uploadPicture(File file) {
+
+        final BmobFile bmobFile = new BmobFile(file);
+        bmobFile.uploadblock(this, new UploadFileListener() {
+            @Override
+            public void onSuccess() {
+                String url = bmobFile.getFileUrl(AddPictureActivity.this);
+
+                Picture picture = new Picture();
+                picture.title = mEditText.getText().toString();
+                picture.url = url;
+                picture.save(AddPictureActivity.this, new SaveListener() {
+                    @Override
+                    public void onSuccess() {
+                        LogHelper.d("lxb ->提交成功");
+                        showShortToast("提交成功");
+                        finish();
+                    }
+
+                    @Override
+                    public void onFailure(int i, String s) {
+                        showShortToast("提交失败 "+s);
+                        LogHelper.e("lxb ->提交失败 "+s);
+                    }
+                });
+
+            }
+
+            @Override
+            public void onFailure(int i, String s) {
+                showShortToast("上传图片失败 "+s);
+            }
+        });
     }
 
     private void selectPic() {
